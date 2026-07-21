@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TickForge Community</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
+    body { margin: 0; background: #0d1117; color: #e6edf3; }
+    main { max-width: 960px; margin: 0 auto; padding: 32px 20px; }
+    header, section { background: #161b22; border: 1px solid #30363d; border-radius: 14px;
+      padding: 20px; margin-bottom: 16px; }
+    h1 { margin: 0 0 6px; } .muted { color: #8b949e; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+    .card { background: #0d1117; border-radius: 10px; padding: 14px; }
+    .value { display: block; font-size: 1.55rem; font-weight: 700; margin-top: 6px; }
+    button { background: #238636; color: white; border: 0; border-radius: 8px; padding: 10px 15px;
+      font-weight: 650; cursor: pointer; } button:hover { background: #2ea043; }
+    table { width: 100%; border-collapse: collapse; } td, th { padding: 9px; text-align: left;
+      border-bottom: 1px solid #30363d; } code { color: #79c0ff; }
+  </style>
+</head>
+<body><main>
+  <header><h1>TickForge Community</h1>
+    <div class="muted">Simulation-only · educational framework · no live broker adapter</div>
+  </header>
+  <section class="grid">
+    <div class="card">模式<span class="value" id="mode">—</span></div>
+    <div class="card">權益<span class="value" id="equity">—</span></div>
+    <div class="card">已實現損益<span class="value" id="pnl">—</span></div>
+    <div class="card">狀態<span class="value" id="health">—</span></div>
+  </section>
+  <section><button id="step">產生 30 根模擬 1 分 K</button>
+    <span class="muted">　用合成資料探索完整流程</span></section>
+  <section><h2>最近決策</h2><table><thead><tr><th>時間</th><th>價格</th><th>動作</th><th>理由</th></tr></thead>
+    <tbody id="decisions"></tbody></table></section>
+  <section class="muted">這不是投資建議。OpenAPI 文件位於 <code>/docs</code>。</section>
+</main><script>
+const money = new Intl.NumberFormat('zh-TW', {maximumFractionDigits: 2});
+async function refresh() {
+  const s = await (await fetch('/api/state')).json();
+  mode.textContent = s.mode; equity.textContent = money.format(s.equity);
+  pnl.textContent = money.format(s.realized_pnl); health.textContent = s.health.status;
+  decisions.innerHTML = s.recent_decisions.slice(0, 12).map(d =>
+    `<tr><td>${new Date(d.at).toLocaleTimeString()}</td><td>${money.format(d.price)}</td>` +
+    `<td>${d.action}</td><td>${d.reason}</td></tr>`).join('');
+}
+step.onclick = async () => { step.disabled = true; await fetch('/api/demo/step?count=30', {method:'POST'});
+  await refresh(); step.disabled = false; };
+refresh(); setInterval(refresh, 2500);
+</script></body></html>

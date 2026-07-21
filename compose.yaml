@@ -1,0 +1,12 @@
+services:
+  tickforge:
+    build: .
+    ports:
+      - "127.0.0.1:5003:5003"
+    environment:
+      TICKFORGE_HOST: 0.0.0.0
+      TICKFORGE_PORT: 5003
+      TICKFORGE_CONTROL_TOKEN: ${TICKFORGE_CONTROL_TOKEN:-replace-with-at-least-32-random-characters}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
