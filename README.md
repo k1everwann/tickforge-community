@@ -130,6 +130,23 @@ class MyReviewer:
         return candidate
 ```
 
+### Offline local-model reviewer reference
+
+`LocalModelReviewer` is an optional, offline, veto-only reference implementation. It reviews
+only a proposed `OPEN_LONG`; `HOLD` and `CLOSE` bypass the model so a model cannot delay a risk
+exit. The runtime must return exactly `{"decision":"accept|reject","reason":"..."}`. A timeout,
+runtime failure, invalid JSON, extra field, or other schema mismatch fails closed to `HOLD`.
+
+This reference is not wired to any live service. Keep GGUF files under the ignored `models/`
+directory. Run the benchmark outside trading hours and under explicit host resource limits:
+
+```bash
+systemd-run --user --scope -p CPUQuota=200% -p MemoryMax=6G \
+  nice -n 19 taskset -c 0,1 \
+  .venv/bin/python examples/local_model_reviewer_benchmark.py \
+  --model models/model.gguf --runs 10
+```
+
 複核器不能繞過 `RiskManager` 或委託狀態日誌。這是刻意的安全邊界。
 
 ## 開發

@@ -10,6 +10,7 @@ htmlcov/
 data/
 dist/
 build/
+models/
 .idea/
 .vscode/
 .DS_Store
