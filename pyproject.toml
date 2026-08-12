@@ -40,6 +40,8 @@ packages = ["src/tickforge"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# Safety suites group their cases as `<Module>Tests` classes, one per module.
+python_classes = ["Test*", "*Tests"]
 
 [tool.ruff]
 line-length = 100
