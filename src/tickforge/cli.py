@@ -14,6 +14,14 @@ from .demo import DemoMarket
 from .engine import TradingEngine
 from .monitor import monitor
 from .replay import replay_csv
+from .watchdog import (
+    HealthWatchdog,
+    HttpHealthProbe,
+    PrintNotifier,
+    WatchdogPolicy,
+)
+
+DEFAULT_HEALTH_URL = "http://127.0.0.1:8080/api/health"
 
 
 def run_demo(count: int) -> None:
@@ -62,6 +70,20 @@ def main() -> None:
     health.add_argument("--url", default="http://127.0.0.1:5003/api/health")
     health.add_argument("--interval", type=float, default=10)
     health.add_argument("--once", action="store_true")
+    watch = subparsers.add_parser(
+        "watchdog",
+        help="run the escalating out-of-process health watchdog (run it as its own process)",
+    )
+    watch.add_argument("--url", default=DEFAULT_HEALTH_URL)
+    watch.add_argument("--interval", type=float, default=WatchdogPolicy().poll_seconds)
+    watch.add_argument(
+        "--stale-open-seconds", type=float, default=WatchdogPolicy().stale_open_seconds
+    )
+    watch.add_argument(
+        "--failures-before-alert", type=int, default=WatchdogPolicy().failures_before_alert
+    )
+    watch.add_argument("--state-path", type=Path, default=None)
+    watch.add_argument("--once", action="store_true")
     args = parser.parse_args()
 
     if args.command == "demo":
@@ -72,6 +94,18 @@ def main() -> None:
         return
     if args.command == "monitor":
         raise SystemExit(monitor(args.url, args.interval, args.once))
+    if args.command == "watchdog":
+        watchdog = HealthWatchdog(
+            HttpHealthProbe(args.url),
+            notifier=PrintNotifier(),
+            policy=WatchdogPolicy(
+                poll_seconds=args.interval,
+                stale_open_seconds=args.stale_open_seconds,
+                failures_before_alert=args.failures_before_alert,
+            ),
+            state_path=args.state_path,
+        )
+        raise SystemExit(watchdog.run(once=args.once))
 
     settings = Settings.from_env()
     if args.host or args.port:

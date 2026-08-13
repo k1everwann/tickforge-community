@@ -6,10 +6,11 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from tickforge.config import Settings
-from tickforge.engine import TradingEngine
+from tickforge.engine import TradingEngine, narrow_only
 from tickforge.indicators import BarAggregator
-from tickforge.journal import OrderJournal
+from tickforge.journal import OrderJournal, OrderStateError
 from tickforge.models import Action, Bar, Decision
+from tickforge.reconcile import ReconciliationState
 
 
 def bar(at: datetime, price: float, *, low: float | None = None) -> Bar:
@@ -82,6 +83,62 @@ def test_order_journal_persists_unknown_state_and_fails_closed(tmp_path) -> None
     assert reopened.unresolved()[0]["id"] == intent
     with pytest.raises(RuntimeError, match="unresolved"):
         reopened.start_intent("OPEN_LONG", {"price": 101})
+
+
+def test_order_journal_records_the_full_lifecycle_in_the_audit_table(tmp_path) -> None:
+    journal = OrderJournal(tmp_path / "journal.sqlite3")
+    intent = journal.start_intent("OPEN_LONG", {"price": 100})
+    journal.mark_submitting(intent)
+    journal.mark_submitted(intent, external_order_id="opaque-external-id")
+    journal.resolve(intent, "FILLED", {"fill_price": 101})
+    states = [row["to_state"] for row in journal.transitions(intent)]
+    assert states == ["INTENT_CREATED", "SUBMITTING", "SUBMITTED", "FILLED"]
+    assert journal.unresolved() == []
+    assert journal.get(intent)["external_order_id"] == "opaque-external-id"
+    journal.close()
+
+
+def test_filled_intent_is_immutable(tmp_path) -> None:
+    journal = OrderJournal(tmp_path / "journal.sqlite3")
+    intent = journal.start_intent("OPEN_LONG", {"price": 100})
+    journal.resolve(intent, "FILLED", {"fill_price": 101})
+    # A duplicated callback re-asserting the same terminal state is harmless.
+    journal.resolve(intent, "FILLED", {"fill_price": 101})
+    with pytest.raises(OrderStateError, match="terminal"):
+        journal.transition(intent, "CANCELLED")
+    journal.close()
+
+
+def test_manual_review_stays_unresolved_and_blocks_new_intents(tmp_path) -> None:
+    journal = OrderJournal(tmp_path / "journal.sqlite3")
+    intent = journal.start_intent("OPEN_LONG", {"price": 100})
+    journal.require_manual_review(intent, "synthetic ambiguity")
+    assert journal.status()["unresolved_states"] == ["MANUAL_REVIEW"]
+    with pytest.raises(OrderStateError, match="unresolved"):
+        journal.start_intent("OPEN_LONG", {"price": 101})
+    journal.close()
+
+
+def test_reviewer_cannot_widen_a_candidate() -> None:
+    candidate = Decision(Action.HOLD, "no setup")
+    widened = narrow_only(candidate, Decision(Action.OPEN_LONG, "reviewer wants in", 0.9, 10))
+    assert widened.action is Action.HOLD
+    assert "may only narrow" in widened.reason
+
+
+def test_engine_reconciles_before_evaluating_a_candidate(tmp_path) -> None:
+    engine = TradingEngine(settings(tmp_path))
+    engine.strategy = AlwaysOpen()
+    start = datetime(2026, 1, 1, 9, 0, tzinfo=UTC)
+    try:
+        warm_to_first_five(engine, start)
+        gates = engine.state()["gates"]
+    finally:
+        engine.close()
+    assert engine.reconciliation is not None
+    assert engine.reconciliation.state is ReconciliationState.IN_SYNC
+    assert gates["pre_model"] == ["no_unresolved_order_intent", "state_reconciled"]
+    assert gates["post_model"] == ["not_paused", "risk_limits"]
 
 
 def test_engine_opens_one_simulated_long_and_hard_stop_closes_it(tmp_path) -> None:
