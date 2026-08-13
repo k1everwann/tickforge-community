@@ -149,6 +149,25 @@ systemd-run --user --scope -p CPUQuota=200% -p MemoryMax=6G \
 
 複核器不能繞過 `RiskManager` 或委託狀態日誌。這是刻意的安全邊界。
 
+## 可重複安全 Demo
+
+比賽或簡報場合可直接執行離線安全 Demo。它使用固定合成資料，不讀取真實交易資料，
+不連接券商、網路或任何正式服務：
+
+```bash
+python -m tickforge.safety_demo
+```
+
+若需要預先保存終端逐字稿：
+
+```bash
+python -m tickforge.safety_demo --transcript safety-demo-transcript.txt
+```
+
+四段流程依序展示：九道確定性閘門在模型前阻擋候選、veto-only 模型複核、
+畸形模型輸出 fail closed，以及 UNKNOWN 委託封鎖後續進場。每段均輸出去識別化的
+決策稽核紀錄。相同版本連續執行會得到完全相同的逐字稿。
+
 ## 開發
 
 ```bash
